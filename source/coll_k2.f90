@@ -67,18 +67,23 @@ subroutine k2coll_collimate(icoll, iturn, ie, c_length, c_rotation, c_aperture, 
   x_in, xp_in, y_in, yp_in, p_in, s_in, enom, lhit_pos, lhit_turn, part_abs_pos_local,             &
   part_abs_turn_local, impact, indiv, lint, onesided, nhit_stage, j_slices, nabs_type, linside)
 
+  use, intrinsic :: iso_fortran_env, only : int16
   use parpro
   use crcoall
   use coll_db
   use coll_common
   use coll_crystal, only : cry_doCrystal
   use coll_materials
-  use mod_common, only : iexact, napx
-  use mod_common_main, only : partID
+  use mod_common, only : iexact, napx, unit208
+  use mod_common_main, only : partID, naa
   use mathlib_bouncer
   use mod_ranlux
+
 #ifdef HDF5
   use hdf5_output
+#endif
+#ifdef ROOT
+  use root_output
 #endif
 
   integer,          intent(in)    :: icoll        ! Collimator ID
@@ -122,6 +127,11 @@ subroutine k2coll_collimate(icoll, iturn, ie, c_length, c_rotation, c_aperture, 
   real(kind=fPrec) xIn,xpIn,yIn,ypIn,xOut,xpOut,yOut,ypOut,sImp,sOut
   real(kind=fPrec) x_in0,xp_in0
 
+  ! ien0,ien1: particle energy entering/leaving the collimator
+  ! energy in MeV
+  real(kind=fPrec)    :: ien0, ien1
+  integer(kind=int16) :: nnuc0,nnuc1
+
   ! Initilaisation
   mat    = cdb_cMaterialID(icoll)
   length = c_length
@@ -140,6 +150,12 @@ subroutine k2coll_collimate(icoll, iturn, ie, c_length, c_rotation, c_aperture, 
   sRot   = sin_mb(c_rotation)
   cRRot  = cos_mb(-c_rotation)
   sRRot  = sin_mb(-c_rotation)
+
+  !Set energy and nucleon change variables as with the coupling
+  nnuc0 = 0
+  ien0  = zero
+  nnuc1 = 0
+  ien1  = zero
 
   do j=1,napx
 
@@ -176,6 +192,11 @@ subroutine k2coll_collimate(icoll, iturn, ie, c_length, c_rotation, c_aperture, 
     if(onesided .and. x < zero .and. (icoll /= ipencil .or. iturn /= 1)) then
       cycle
     end if
+
+! Log input energy + nucleons as per the FLUKA coupling
+    nnuc0   = nnuc0 + naa(j)
+    ien0    = ien0 + rcp(j) * c1e3
+
 
     ! Now mirror at the horizontal axis for negative X offset
     if(x < zero) then
@@ -224,9 +245,9 @@ subroutine k2coll_collimate(icoll, iturn, ie, c_length, c_rotation, c_aperture, 
       ! pencil_rmsy defines spread parallel to jaw surface
       if(pencil_distr == 0 .and. (pencil_rmsx /= zero .or. pencil_rmsy /= zero)) then
         ! how to assure that all generated particles are on the jaw ?!
-        x  = pencil_dx(icoll) + pencil_rmsx*(rndm4() - half)
+        x  = pencil_dx(icoll) + pencil_rmsx*(coll_rand() - half)
         xp = zero
-        z  = pencil_rmsy*(rndm4() - half)
+        z  = pencil_rmsy*(coll_rand() - half)
         zp = zero
       end if
 
@@ -249,7 +270,7 @@ subroutine k2coll_collimate(icoll, iturn, ie, c_length, c_rotation, c_aperture, 
       !             here pencil_rmsx is not gaussian!!!
       ! pencil_rmsy defines spread parallel to jaw surface
       if(pencil_distr == 2 .and. (pencil_rmsx /= zero .or. pencil_rmsy /= zero)) then
-        x  = pencil_dx(icoll) + pencil_rmsx*(rndm4() - half)
+        x  = pencil_dx(icoll) + pencil_rmsx*(coll_rand() - half)
         ! all generated particles are on the jaw now
         x  = sqrt(x**2)
         xp = zero
@@ -262,7 +283,7 @@ subroutine k2coll_collimate(icoll, iturn, ie, c_length, c_rotation, c_aperture, 
       if(onesided) then
         mirror = one
       else
-        if(rndm4() < half) then
+        if(coll_rand() < half) then
           mirror = -one
         else
           mirror = one
@@ -278,6 +299,10 @@ subroutine k2coll_collimate(icoll, iturn, ie, c_length, c_rotation, c_aperture, 
       end if
 
       write(coll_pencilUnit,"(f10.8,4(2x,f10.8))") x, xp, z, zp, tiltangle
+      flush(coll_pencilUnit)
+#ifdef CR
+      coll_pencilFilePos = coll_pencilFilePos + 1
+#endif
     end if ! End pencil dist
 
     ! After finishing the coordinate transformation, or the coordinate manipulations in case of pencil beams,
@@ -378,6 +403,10 @@ subroutine k2coll_collimate(icoll, iturn, ie, c_length, c_rotation, c_aperture, 
             s_Dump = sp+real(j_slices-1,fPrec)*c_length
             write(coll_jawProfileUnit,"(3(1x,i7),5(1x,e17.9),1x,i1)") &
               icoll,iturn,partID(j),x_Dump,xpDump,y_Dump,ypDump,s_Dump,1
+            flush(coll_jawProfileUnit)
+#ifdef CR
+            coll_jawProfileFilePos = coll_jawProfileFilePos + 1
+#endif
           end if
         end if
 
@@ -427,10 +456,18 @@ subroutine k2coll_collimate(icoll, iturn, ie, c_length, c_rotation, c_aperture, 
             ! Write out all impacts to all_impacts.dat
             write(coll_flukImpAllUnit,"(i4,(1x,f6.3),(1x,f8.6),4(1x,e19.10),i2,2(1x,i7))") &
               icoll,c_rotation,s_flk,x_flk,xp_flk,y_flk,yp_flk,nabs,partID(j),iturn
+            flush(coll_flukImpAllUnit)
+#ifdef CR
+            coll_flukImpAllFilePos = coll_flukImpAllFilePos + 1
+#endif
             if(nabs == 1 .or. nabs == 4) then
               ! Standard FLUKA_impacts writeout of inelastic and single diffractive
               write(coll_flukImpUnit,"(i4,(1x,f6.3),(1x,f8.6),4(1x,e19.10),i2,2(1x,i7))") &
                 icoll,c_rotation,s_flk,x_flk,xp_flk,y_flk,yp_flk,nabs,partID(j),iturn
+              flush(coll_flukImpUnit)
+#ifdef CR
+              coll_flukImpFilePos = coll_flukImpFilePos + 1
+#endif
             end if
           end if
 
@@ -463,6 +500,10 @@ subroutine k2coll_collimate(icoll, iturn, ie, c_length, c_rotation, c_aperture, 
             s_Dump = s+sp+real(j_slices-1,fPrec)*c_length
             write(coll_jawProfileUnit,"(3(1x,i7),5(1x,e17.9),1x,i1)") &
               icoll,iturn,partID(j),x_Dump,xpDump,y_Dump,ypDump,s_Dump,2
+            flush(coll_jawProfileUnit)
+#ifdef CR
+            coll_jawProfileFilePos = coll_jawProfileFilePos + 1
+#endif
           end if
           if(iexact) then
             zpj = sqrt(one-xp**2-zp**2)
@@ -503,6 +544,10 @@ subroutine k2coll_collimate(icoll, iturn, ie, c_length, c_rotation, c_aperture, 
 #endif
       write(coll_fstImpactUnit,"(i8,1x,i7,1x,i2,1x,i1,2(1x,f5.3),8(1x,e17.9))") &
         partID(j),iTurn,iColl,nAbs,sImp,sOut,xIn,xpIn,yIn,ypIn,xOut,xpOut,yOut,ypOut
+      flush(coll_fstImpactUnit)
+#ifdef CR
+      coll_fstImpactFilePos = coll_fstImpactFilePos + 1
+#endif
 #ifdef HDF5
       end if
 #endif
@@ -535,6 +580,11 @@ subroutine k2coll_collimate(icoll, iturn, ie, c_length, c_rotation, c_aperture, 
       xp_in(j) = xp*cRRot + zp*sRRot
       yp_in(j) = zp*cRRot - xp*sRRot
 
+! Log output energy + nucleons as per the FLUKA coupling
+! Do not log dead particles
+      nnuc1       = nnuc1 + naa(j)                          ! outcoming nucleons
+      ien1        = ien1  + rcp(j) * c1e3                   ! outcoming energy
+
       if(icoll == ipencil .and. iturn == 1 .and. pencil_distr /= 3) then
         x00      = mirror * x00
         x_in(j)  = x00*cRRot + z00*sRRot
@@ -558,6 +608,20 @@ subroutine k2coll_collimate(icoll, iturn, ie, c_length, c_rotation, c_aperture, 
     end if
 
   end do ! End of loop over all particles
+
+! write out energy change over this collimator
+  if((ien0-ien1) > one) then
+#ifdef ROOT
+    if(root_flag .and. root_Collimation == 1) then
+      call root_EnergyDeposition(icoll, nnuc0-nnuc1,c1m3*(ien0-ien1))
+    end if
+#endif
+    write(unit208,"(2(i6,1x),e24.16)") icoll, (nnuc0-nnuc1), c1m3*(ien0-ien1)
+#ifdef CR
+    fort208Pos = fort208Pos + 1
+#endif
+    flush(unit208)
+  end if
 
 end subroutine k2coll_collimate
 
@@ -602,10 +666,6 @@ subroutine k2coll_scatin(plab)
 
   ! Claudia new fit for the slope parameter with new data at sqrt(s)=7 TeV from TOTEM
   bpp = 7.156_fPrec + 1.439_fPrec*log_mb(sqrt(ecmsq))
-
-  ! Unmeasured tungsten data, computed with lead data and power laws
-  bnref(4) = bnref(5)*(anuc(4)/anuc(5))**(two/three)
-  emr(4)   = emr(5)  *(anuc(4)/anuc(5))**(one/three)
 
   ! Compute cross-sections (CS) and probabilities + Interaction length
   ! Last two material treated below statement number 100
@@ -744,6 +804,10 @@ subroutine k2coll_jaw(s, nabs, icoll, iturn, ipart)
       else
 #endif
       write(coll_scatterUnit,"(1x,i2,2x,i4,2x,i5,2x,i1,3(2x,e14.6))") icoll, iturn, ipart, 1, -one, zero, zero
+      flush(coll_scatterUnit)
+#ifdef CR
+      coll_scatterFilePos = coll_scatterFilePos + 1
+#endif
 #ifdef HDF5
       end if
 #endif
@@ -760,6 +824,10 @@ subroutine k2coll_jaw(s, nabs, icoll, iturn, ipart)
       else
 #endif
       write(coll_scatterUnit,"(1x,i2,2x,i4,2x,i5,2x,i1,3(2x,e14.6))") icoll, iturn, ipart, 0, -one, zero, zero
+      flush(coll_scatterUnit)
+#ifdef CR
+      coll_scatterFilePos = coll_scatterFilePos + 1
+#endif
 #ifdef HDF5
       end if
 #endif
@@ -773,7 +841,7 @@ subroutine k2coll_jaw(s, nabs, icoll, iturn, ipart)
   ! Do a step for a point-like interaction.
   ! Get monte-carlo interaction length.
 10 continue
-  zlm1     = (-one*xintl(mat))*log_mb(rndm4())
+  zlm1     = (-one*xintl(mat))*log_mb(coll_rand())
   nabs_tmp = 0  ! type of interaction reset before following scattering process
   xpBef    = xp ! save angles and momentum before scattering
   zpBef    = zp
@@ -804,6 +872,10 @@ subroutine k2coll_jaw(s, nabs, icoll, iturn, ipart)
       else
 #endif
       write(coll_scatterUnit,'(1x,i2,2x,i4,2x,i5,2x,i1,3(2x,e18.10))') icoll,iturn,ipart,nabs_tmp,(p-pBef)/pBef,xp-xpBef,zp-zpBef
+      flush(coll_scatterUnit)
+#ifdef CR
+      coll_scatterFilePos = coll_scatterFilePos + 1
+#endif
 #ifdef HDF5
       end if
 #endif
@@ -839,6 +911,10 @@ subroutine k2coll_jaw(s, nabs, icoll, iturn, ipart)
       else
 #endif
       write(coll_scatterUnit,'(1x,i2,2x,i4,2x,i5,2x,i1,3(2x,e18.10))') icoll,iturn,ipart,nabs_tmp,(p-pBef)/pBef,xp-xpBef,zp-zpBef
+      flush(coll_scatterUnit)
+#ifdef CR
+      coll_scatterFilePos = coll_scatterFilePos + 1
+#endif
 #ifdef HDF5
       end if
 #endif
@@ -883,6 +959,10 @@ subroutine k2coll_jaw(s, nabs, icoll, iturn, ipart)
       else
 #endif
       write(coll_scatterUnit,'(1x,i2,2x,i4,2x,i5,2x,i1,3(2x,e14.6))') icoll,iturn,ipart,nabs_tmp,-one,zero,zero
+      flush(coll_scatterUnit)
+#ifdef CR
+      coll_scatterFilePos = coll_scatterFilePos + 1
+#endif
 #ifdef HDF5
       end if
 #endif
@@ -934,6 +1014,10 @@ subroutine k2coll_jaw(s, nabs, icoll, iturn, ipart)
     else
 #endif
     write(coll_scatterUnit,'(1x,i2,2x,i4,2x,i5,2x,i1,3(2x,e18.10))') icoll,iturn,ipart,nabs_tmp,(p-pBef)/pBef,xp-xpBef,zp-zpBef
+    flush(coll_scatterUnit)
+#ifdef CR
+    coll_scatterFilePos = coll_scatterFilePos + 1
+#endif
 #ifdef HDF5
     end if
 #endif
@@ -1071,7 +1155,7 @@ subroutine k2coll_calcIonLoss(IS, PC, DZ, EnLo)
   prob_tail = ((cs_tail*rho(IS))*DZ)*c1e2
 
   ! Determine based on random number if tail energy loss occurs.
-  if(rndm4() < prob_tail) then
+  if(coll_rand() < prob_tail) then
     EnLo = ((k*zatom(IS))/(anuc(IS)*betar**2)) * ( &
       half*log_mb((kine*Tmax)/(exEn*exEn)) - betar**2 - log_mb(plen/exEn) - log_mb(bgr) + &
       half + TMax**2/((eight*gammar**2)*pmap**2) &
@@ -1102,8 +1186,8 @@ subroutine k2coll_tetat(t, p, tx, tz)
   teta = sqrt(t)/p
 
 10 continue
-  va  = two*rndm4() - one
-  vb  = rndm4()
+  va  = two*coll_rand() - one
+  vb  = coll_rand()
   va2 = va**2
   vb2 = vb**2
   r2  = va2 + vb2
@@ -1187,8 +1271,8 @@ subroutine k2coll_scamcs(xx, xxp, s)
   xp0 = xxp
 
 10 continue
-  v1 = two*rndm4() - one
-  v2 = two*rndm4() - one
+  v1 = two*coll_rand() - one
+  v2 = two*coll_rand() - one
   r2 = v1**2 + v2**2
   if(r2 >= one) goto 10
 
@@ -1274,11 +1358,11 @@ real(kind=fPrec) function k2coll_gettran(inter, xmat, p)
 #ifndef MERLINSCATTER
   select case(inter)
   case(2) ! Nuclear Elastic
-    k2coll_gettran = (-one*log_mb(rndm4()))/bn(xmat)
+    k2coll_gettran = (-one*log_mb(coll_rand()))/bn(xmat)
   case(3) ! pp Elastic
-    k2coll_gettran = (-one*log_mb(rndm4()))/bpp
+    k2coll_gettran = (-one*log_mb(coll_rand()))/bpp
   case(4) ! Single Diffractive
-    xm2 = exp_mb(rndm4() * xln15s)
+    xm2 = exp_mb(coll_rand() * xln15s)
     p   = p * (one - xm2/ecmsq)
     if(xm2 < two) then
       bsd = two * bpp
@@ -1287,7 +1371,7 @@ real(kind=fPrec) function k2coll_gettran(inter, xmat, p)
     else
       bsd = (seven*bpp)/12.0_fPrec
     end if
-    k2coll_gettran = (-one*log_mb(rndm4()))/bsd
+    k2coll_gettran = (-one*log_mb(coll_rand()))/bsd
   case(5) ! Coulomb
     call funlux(cgen(1,mat), xran, 1)
     k2coll_gettran = xran(1)
@@ -1295,7 +1379,7 @@ real(kind=fPrec) function k2coll_gettran(inter, xmat, p)
 #else
   select case(inter)
   case(2)
-    k2coll_gettran = (-one*log_mb(rndm4()))/bn(xmat)
+    k2coll_gettran = (-one*log_mb(coll_rand()))/bn(xmat)
   case(3)
     call merlinscatter_get_elastic_t(k2coll_gettran)
   case(4)
@@ -1323,7 +1407,7 @@ integer function k2coll_ichoix(ma)
   integer i
   real(kind=fPrec) aran
 
-  aran = rndm4()
+  aran = coll_rand()
   i    = 1
 10 continue
   if(aran > cprob(i,ma)) then

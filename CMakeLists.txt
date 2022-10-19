@@ -662,20 +662,24 @@ if(Fortran_COMPILER_NAME MATCHES "gfortran.*")
     endif(AVX)
 
     if(AVX2)
-      set(CMAKE_Fortran_FLAGS "-mavx -mavx2 -mno-fma4 -mno-fma ${CMAKE_Fortran_FLAGS}")
+      set(CMAKE_Fortran_FLAGS "-mavx -mavx2 ${CMAKE_Fortran_FLAGS}")
     endif(AVX2)
 
     if(AVX512)
-      set(CMAKE_Fortran_FLAGS "-mavx -mavx2 -mavx512f -mno-fma4 -mno-fma ${CMAKE_Fortran_FLAGS}")
+      set(CMAKE_Fortran_FLAGS "-mavx -mavx2 -mavx512f ${CMAKE_Fortran_FLAGS}")
     endif(AVX512)
 
     if(AVX512_SKYLAKE)
-      set(CMAKE_Fortran_FLAGS "-mavx -mavx2 -mavx512f -mavx512cd -mavx512bw -mavx512vl -mno-fma4 -mno-fma ${CMAKE_Fortran_FLAGS}")
+      set(CMAKE_Fortran_FLAGS "-mavx -mavx2 -mavx512f -mavx512cd -mavx512bw -mavx512vl ${CMAKE_Fortran_FLAGS}")
     endif(AVX512_SKYLAKE)
 
     if(NATIVE)
-      set(CMAKE_Fortran_FLAGS "-march=native -mno-fma4 -mno-fma ${CMAKE_Fortran_FLAGS}")
+      set(CMAKE_Fortran_FLAGS "-march=native ${CMAKE_Fortran_FLAGS}")
     endif(NATIVE)
+
+    if(CRLIBM)
+      set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -mno-fma4 -mno-fma")
+    endif(CRLIBM)
 
     if(PREFETCH)
       set(CMAKE_Fortran_FLAGS "-fprefetch-loop-arrays ${CMAKE_Fortran_FLAGS}")
@@ -706,8 +710,8 @@ elseif(Fortran_COMPILER_NAME MATCHES "ifort.*")
   ###########
 
   set(IFORT ON)
-  set(CMAKE_Fortran_FLAGS_RELEASE "-fp-model source -fp-model strict -fp-model no-except -O3 -no-fma -std15 -assume realloc-lhs")
-  set(CMAKE_Fortran_FLAGS_DEBUG   "-fp-model source -fp-model strict -fp-model no-except -O0 -g -traceback -no-fma -std15 -assume realloc-lhs")
+  set(CMAKE_Fortran_FLAGS_RELEASE "-fp-model source -fp-model strict -fp-model no-except -O3 -no-fma -std18 -assume realloc-lhs")
+  set(CMAKE_Fortran_FLAGS_DEBUG   "-fp-model source -fp-model strict -fp-model no-except -O0 -g -traceback -no-fma -std18 -assume realloc-lhs")
   set(PREPRO_EXEC  ${CMAKE_Fortran_COMPILER})
   set(PREPRO_FLAGS -I${CMAKE_SOURCE_DIR}/source/include -fpp -E -P)
 
@@ -843,20 +847,24 @@ if(${CMAKE_C_COMPILER_ID} MATCHES "GNU")
     endif(AVX)
 
     if(AVX2)
-      set(CMAKE_C_FLAGS "-mavx -mavx2 -mno-fma4 -mno-fma ${CMAKE_C_FLAGS}")
+      set(CMAKE_C_FLAGS "-mavx -mavx2 ${CMAKE_C_FLAGS}")
     endif(AVX2)
 
     if(AVX512)
-      set(CMAKE_C_FLAGS "-mavx -mavx2 -mavx512f -mno-fma4 -mno-fma ${CMAKE_C_FLAGS}")
+      set(CMAKE_C_FLAGS "-mavx -mavx2 -mavx512f ${CMAKE_C_FLAGS}")
     endif(AVX512)
 
     if(AVX512_SKYLAKE)
-      set(CMAKE_C_FLAGS "-mavx -mavx2 -mavx512f -mavx512cd -mavx512bw -mavx512vl -mno-fma4 -mno-fma ${CMAKE_C_FLAGS}")
+      set(CMAKE_C_FLAGS "-mavx -mavx2 -mavx512f -mavx512cd -mavx512bw -mavx512vl ${CMAKE_C_FLAGS}")
     endif(AVX512_SKYLAKE)
 
     if(NATIVE)
       set(CMAKE_C_FLAGS "-march=native ${CMAKE_C_FLAGS}")
     endif(NATIVE)
+
+    if(CRLIBM)
+      set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mno-fma4 -mno-fma")
+    endif(CRLIBM)
 
     if(PREFETCH)
       set(CMAKE_C_FLAGS "-fprefetch-loop-arrays ${CMAKE_C_FLAGS}")
@@ -999,20 +1007,24 @@ if(${CMAKE_CXX_COMPILER_ID} MATCHES "GNU")
     endif(AVX)
 
     if(AVX2)
-      set(CMAKE_CXX_FLAGS "-mavx -mavx2 -mno-fma4 -mno-fma ${CMAKE_CXX_FLAGS}")
+      set(CMAKE_CXX_FLAGS "-mavx -mavx2 ${CMAKE_CXX_FLAGS}")
     endif(AVX2)
 
     if(AVX512)
-      set(CMAKE_CXX_FLAGS "-mavx -mavx2 -mavx512f -mno-fma4 -mno-fma ${CMAKE_CXX_FLAGS}")
+      set(CMAKE_CXX_FLAGS "-mavx -mavx2 -mavx512f ${CMAKE_CXX_FLAGS}")
     endif(AVX512)
 
     if(AVX512_SKYLAKE)
-      set(CMAKE_CXX_FLAGS "-mavx -mavx2 -mavx512f -mavx512cd -mavx512bw -mavx512vl -mno-fma4 -mno-fma ${CMAKE_CXX_FLAGS}")
+      set(CMAKE_CXX_FLAGS "-mavx -mavx2 -mavx512f -mavx512cd -mavx512bw -mavx512vl ${CMAKE_CXX_FLAGS}")
     endif(AVX512_SKYLAKE)
 
     if(NATIVE)
       set(CMAKE_CXX_FLAGS "-march=native ${CMAKE_CXX_FLAGS}")
     endif(NATIVE)
+
+    if(CRLIBM)
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mno-fma4 -mno-fma")
+    endif(CRLIBM)
 
     if(PREFETCH)
       set(CMAKE_CXX_FLAGS "-fprefetch-loop-arrays ${CMAKE_CXX_FLAGS}")
@@ -1269,7 +1281,7 @@ if(DISTLIB)
   if(CRLIBM)
     target_include_directories(distlib PRIVATE ${CMAKE_SOURCE_DIR}/source/crlibm)
     target_include_directories(distlib PRIVATE ${CMAKE_SOURCE_DIR}/source/roundctl)
-    target_compile_options(distlib PRIVATE -DCRLIBM)
+    target_compile_options(distlib PRIVATE -DCRLIBM -fcommon) # GCC 10 defaults to -fno-common https://gcc.gnu.org/gcc-10/porting_to.html
     target_link_libraries(distlib crlibm roundctl)
   endif()
 

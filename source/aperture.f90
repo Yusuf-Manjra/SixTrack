@@ -405,14 +405,15 @@ subroutine aperture_initRT( ix, aptx, apty, apex, apey )
   !-----------------------------------------------------------------------
   ! A.Mereghetti (CERN, BE-ABP-HSS), 2018-03-22
   ! initialise aperture marker to racetrack
+  ! Last modified: 2022-01-10 B.Lindstrom
   !-----------------------------------------------------------------------
   implicit none
   integer ix
   real(kind=fPrec) aptx, apty, apex, apey
   call aperture_nul( ix )
   kape(ix)=6
-  ape(1,ix)=aptx+apex ! needed only for interpolation
-  ape(2,ix)=apty+apey ! needed only for interpolation
+  ape(1,ix)=aptx ! needed only for interpolation
+  ape(2,ix)=apty ! needed only for interpolation
   ape(3,ix)=apex
   ape(4,ix)=apey
   ape(5,ix)=aptx
@@ -618,6 +619,7 @@ subroutine aperture_checkApeMarker(turn, i, ix, llost)
               isnan_mb(xv1(j)).or.isnan_mb(xv2(j))
           end if
         end if
+        llost=llost.or.llostp(j)
       end if
     end do
 
@@ -1203,7 +1205,7 @@ end function checkOC
 logical function checkRT( x, y, aptx, apty, apex, apey, apxx, apyy, apxy )
 !-----------------------------------------------------------------------
 !     A.Mereghetti and P.Garcia Ortega, for the FLUKA Team
-!     last modified: 16-01-2019
+!     last modified: 10-01-2022 by B.Lindstrom
 !     check particle position against RaceTrack aperture
 !-----------------------------------------------------------------------
   implicit none
@@ -1211,8 +1213,9 @@ logical function checkRT( x, y, aptx, apty, apex, apey, apxx, apyy, apxy )
 ! parameters
   real(kind=fPrec) x, y, aptx, apty, apex, apey, apxx, apyy, apxy
 
-  checkRT = checkRE( x, y, aptx+apex, apty+apey ) .or. &
-            checkEL( abs(x)-aptx, abs(y)-apty, apxx, apyy, apxy )
+  checkRT = checkRE( x, y, aptx, apty ) .or. &
+            checkEL( abs(x)-aptx+apex, abs(y)-apty+apey, apxx, apyy, apxy ) &
+            .and. abs(x) .gt. aptx-apex .and. abs(y) .gt. apty-apey
   return
 end function checkRT
 
@@ -1240,7 +1243,7 @@ logical function checkTR( x, y, aprx, apry, apex, apey, apxx, apyy, apxy, aptx, 
 ! parameters
   real(kind=fPrec) x, y, aprx, apry, apex, apey, apxx, apyy, apxy, m, q, aptx, apty
   checkTR = checkRE( x, y, aprx, apry ) .or.  &
-            checkRT( x, y, aptx, apty, apex, apey, apxx, apyy, apxy) .or.  &
+            checkRT( x, y, aptx+apex, apty+apey, apex, apey, apxx, apyy, apxy) .or.  &
             checkOC( x, y, aprx, apry, m, q)
   return
 end function checkTR

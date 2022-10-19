@@ -143,7 +143,6 @@ contains
 
     use mod_units
     use mod_common, only : fort208, unit208
-
     implicit none
 
     ! interface variables
@@ -164,6 +163,9 @@ contains
     if(unit208 == -1) then
       call f_requestUnit(fort208,unit208)
       call f_open(unit=unit208,file=fort208,formatted=.true.,mode="w")
+#ifdef CR
+      fort208Pos = 0
+#endif
     end if
 
     call f_requestUnit("fluka.log",        fluka_log_unit)
@@ -1012,6 +1014,9 @@ subroutine kernel_fluka_element( nturn, i, ix )
       use mod_common
       use mod_common_track
       use mod_common_main
+#ifdef CR
+      use coll_common, only : fort208Pos
+#endif
 
 #ifdef ROOT
       use root_output
@@ -1079,7 +1084,11 @@ subroutine kernel_fluka_element( nturn, i, ix )
          dpsv  (j) = (ejfv(j)*(nucm0/nucm(j))-e0f)/e0f         ! hisix: new delta
          oidpsv(j) = one/(one+dpsv(j))
          dpsv1 (j) = (dpsv(j)*c1e3)*oidpsv(j)
-         mtc     (j) = (nqq(j)*nucm0)/(qq0*nucm(j))            ! hisix: mass to charge
+         if(nqq(j) .eq. 0) then
+           mtc (j) = zero
+         else
+           mtc (j) = (nqq(j)*nucm0)/(qq0*nucm(j))              ! hisix: mass to charge
+         endif
          moidpsv (j) = mtc(j)*oidpsv(j)                        ! hisix
          omoidpsv(j) = c1e3*((one-mtc(j))*oidpsv(j))           ! hisix
          nnuc1       = nnuc1 + naa(j)                          ! outcoming nucleons
@@ -1089,7 +1098,10 @@ subroutine kernel_fluka_element( nturn, i, ix )
 !     hisix: compute the nucleon and energy difference
 !              reduce by factor 1e-3 to get the energy in GeV
       if((ien0-ien1).gt.one) then
-        write(unit208,"(2(i5,1x),e24.16)") fluka_geo_index(fluka_ix), nnuc0-nnuc1, c1m3*(ien0-ien1)
+        write(unit208,"(2(i6,1x),e24.16)") fluka_geo_index(fluka_ix), nnuc0-nnuc1, c1m3*(ien0-ien1)
+#ifdef CR
+        fort208Pos = fort208Pos + 1
+#endif
 #ifdef ROOT
         if(root_flag .and. root_FLUKA .eq. 1) then
           call root_EnergyDeposition(fluka_geo_index(fluka_ix), nnuc0-nnuc1, c1m3*(ien0-ien1))
@@ -1245,7 +1257,9 @@ subroutine kernel_fluka_exit
       use mod_common
       use mod_common_track
       use mod_common_main
-
+#ifdef CR
+      use coll_common, only : fort208Pos
+#endif
 #ifdef ROOT
       use root_output
 #endif
@@ -1308,7 +1322,10 @@ subroutine kernel_fluka_exit
 !       hisix: compute the nucleon and energy difference
 !              reduce by factor 1e-3 to get the energy in GeV
         if((ien0-ien1).gt.one) then
-          write(unit208,"(2(i5,1x),e24.16)") fluka_geo_index(fluka_ix), nnuc0-nnuc1, c1m3*(ien0-ien1)
+          write(unit208,"(2(i6,1x),e24.16)") fluka_geo_index(fluka_ix), nnuc0-nnuc1, c1m3*(ien0-ien1)
+#ifdef CR
+          fort208Pos = fort208Pos + 1
+#endif
 #ifdef ROOT
           if(root_flag .and. root_FLUKA .eq. 1) then
             call root_EnergyDeposition(fluka_geo_index(fluka_ix), nnuc0-nnuc1, c1m3*(ien0-ien1))
