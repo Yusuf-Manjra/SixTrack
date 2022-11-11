@@ -48,8 +48,6 @@ jobs:
       - name: Run build-wrapper
         run: |
           ./buildLibraries.sh
-          mkdir build
-          cd ./build
           build-wrapper-linux-x86-64 --out-dir ${{ env.BUILD_WRAPPER_OUT_DIR }} ./cmake_six
       - name: Run sonar-scanner
         env:
